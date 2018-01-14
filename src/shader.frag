@@ -1,0 +1,1 @@
+uniform float i;void main(){vec2 a=vec2(sin(i),cos(i)),b=(gl_FragCoord.xy/vec2(640.0,379.0)-1.0)*vec2(1.7,1.0),c=b*3.0+a;float v=smoothstep(.1,.5+sin(i*.3)*.4,fract(length(c)-fract(i+dot(b,tan(a)))));gl_FragColor=vec4(.4*v*acos(v),.2*asin(pow(v,99.0)),v,1.0);}

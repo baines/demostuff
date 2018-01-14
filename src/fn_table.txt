@@ -1,0 +1,12 @@
+/
+__libc_dlopen_mode
+/libSDL-1.2.so.0
+SDL_SetVideoMode
+SDL_GL_SwapBuffers
+/libGL.so.1
+glCreateShaderProgramv
+glGenProgramPipelines
+glUseProgramStages
+glBindProgramPipeline
+glProgramUniform1f
+glRectsv
