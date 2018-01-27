@@ -25,22 +25,21 @@ tmp_space:
 .text
 
 dlopen_stub_part1:
-	# ecx is our link map, iterate it
-	add $11, -105(%ebp)   # point "dlopen" at func below
-	mov 12(%ecx), %ecx
+	add $11, -105(%ebx)        # point "dlopen" at func below
+	mov 12(%ecx), %ecx         # ecx is our link map, iterate it
 	mov 12(%ecx), %eax
 	ret
 
 dlopen_stub_part2:
 	mov -4(%edi), %eax         # XXX: offset needs to be adjusted based on fn_defs
-	mov %eax, -105(%ebp)       # store dlopen symbol
+	mov %eax, -105(%ebx)       # store dlopen symbol
 	jmp *%eax                  # call real dlopen
 
 _start:
 	xchg %eax, %ecx            # put our link_map* in ecx
 	and $-16, %esp
-	mov $tmp_space, %ebp
-	push %ebp
+	mov $tmp_space, %ebx
+	push %ebx
 	mov $fn_loader_data, %esi
 	lea FN_LOADER_SIZE(%esi), %edi
 	push %edi
@@ -52,21 +51,21 @@ _start:
 	push %esi                  # lib name (dlopen arg 1)
 
 load_lib:
-	call *-105(%ebp)           # dlopen
-	mov (%eax), %ebx           # ebx = elf/mem offset
+	call *-105(%ebx)           # dlopen
+	mov (%eax), %ebp           # ebp = elf/mem offset
 	mov 8(%eax), %esi          # esi = l_ld
 .L_dyn_load:
 	lodsl                      # eax = dt_tag
 	movzxb %al, %ecx           # ecx = dt_tag & 0xff
 	lodsl                      # eax = dt_un
-	mov %eax, (%ebp, %ecx, 4)  # store dt_un val in tmp table
+	mov %eax, (%ebx, %ecx, 4)  # store dt_un val in tmp table
 	inc %ecx                   # silly loop
 	loop .L_dyn_load
 .L_sym_load:
-	mov 24(%ebp), %edx         # edx = sym tab ptr
+	mov 24(%ebx), %edx         # edx = sym tab ptr
 .L_sym_next:
 	mov (%edx), %esi           # esi = name offset
-	add 20(%ebp), %esi         # esi = char* name
+	add 20(%ebx), %esi         # esi = char* name
 	mov $0x180f, %cx           # ecx = initial hash val
 	xor %eax, %eax
 .L_hash_loop:                  # do {
@@ -81,36 +80,36 @@ load_lib:
 	cmpl %eax, (%edi)          # did we find the hash?
 	jnz .L_sym_next            # no  -> loop
 	mov -12(%edx), %eax        # yes -> put sym val in eax 
-	addl %ebx, %eax            #  add elf/mem offset
+	addl %ebp, %eax            #  add elf/mem offset
 	stosl                      #  store in edi, edi += 4
 	decl 8(%esp)               # dec hash count
 	jnz .L_sym_load            # continue if count != 0
-	
+
 end_load_lib:
-	xchg %eax, %edi            # edi <- sym val [POINTLESS], eax <- fn table ptr
-	pop %edi                   # edi <- lib name
-	xchg %eax, %ecx            # eax <- 0 [for scasb nul term], ecx <- fn table ptr
-.Lib_str_len:
-	scasb                      # edi += strlen(lib_name)
-	jnz .Lib_str_len
-	xchg %edi, %esi            # esi <- next lib name count, edi <- crap
-	xchg %ecx, %edi            # edi <- fn table ptr, ecx <- crap
-	add $8, %esp               # free crap on stack
-	cmpb $0, (%esi)            #
+	xchg %eax, %ecx            # eax = 0, ecx = hash
+	mov %edi, %esi             # esi = fn_table ptr
+	pop %edi                   # edi = lib name
+	repne scasb                # edi += strlen(lib_name)
+	xchg %edi, %esi            # edi = fn_table ptr again, esi = next lib sym count
+	pop %ecx                   # free crap on stack (ecx = 2)
+	pop %eax                   # eax = still 0
+	cmp %al, (%esi)            # if next lib has no syms, exit loop
 	jnz .Load_lib_loop
 
 video_init:
-	pop %ebp       # ebp = fn_table
-	pop %ebx       # ebx = tmp_space
-	sub $101, %ebx # ebx = phdr
+#	int $3
 
-	pushl $2
-	pushl $0
+	pop %ebp                   # ebp = fn_table
+	pop %ebx                   # ebx = tmp_space
+	sub $101, %ebx             # ebx = phdr
+
+	push %ecx                  # push $2 = flags (SDL_OPENGL)
+	push %eax                  # push $0 = bpp
 	pushl PHDR_HEIGHT(%ebx)
 	pushl PHDR_WIDTH(%ebx)
 	call *_fn_SDL_SetVideoMode(%ebp)
 
-#	push %ebx
+#	push %ebx                  # to re-enable ctrl-c
 #	mov $2, %ebx
 #	mov $48, %eax
 #	xor %ecx, %ecx
@@ -118,26 +117,27 @@ video_init:
 #	pop %ebx
 
 	lea FNTAB_2_SHADER(%ebp), %ecx
-	push %ecx
-	push %esp
-	push $1
-	pushl PHDR_GL_FRAG(%ebx)
+	push %ecx                  # put shader addr in memory
+	push %esp                  # arg2 = char** strings
+	push (%ebx)                # arg1 = array count = 1
+	pushl PHDR_GL_FRAG(%ebx)   # arg0 = GL_FRAGMENT_SHADER constant
 	call *_fn_glCreateShaderProgramv(%ebp)
-	xchg %eax, %esi # esi = shader program
+	xchg %eax, %esi            # esi = shader program
 
-	add $24, %esp
-	push %ebx
-	push (%ebx)
+	pop %eax                   # sub esp
+	pop %ecx                   # ecx = 1
+	lea -8(%esp), %eax         # eax = ptr to store pipeline (top of stack)
+	push %eax                  # arg1 = ptr
+	push %ecx                  # arg0 = count = 1
 	call *_fn_glGenProgramPipelines(%ebp)
-
-	add $4, %esp
-	pushl (%ebx)
 	call *_fn_glBindProgramPipeline(%ebp)
 
-	add $12, %esp
-	push %esi
-	pushl $2
-	sub $4, %esp
+	pop %eax                   # eax = pipeline
+	pop %edx                   # sub esp
+	pop %edx                   # sub esp
+	push %esi                  # arg2 = shader program
+	pushl $2                   # arg1 = GL_FRAGMENT_SHADER_BIT
+	push %eax                  # arg0 = pipeline
 	call *_fn_glUseProgramStages(%ebp)
 
 draw_setup:

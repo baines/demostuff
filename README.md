@@ -16,7 +16,7 @@ src/intro.s:
 src/shader.frag:
 	- Fragment shader used by the intro.
 
-Run make and you should get a 740 byte ELF that looks like this:
+Run make and you should get a 728 byte ELF that looks like this:
 ![screenshot](/anim.gif)
 
 ## TODO:
